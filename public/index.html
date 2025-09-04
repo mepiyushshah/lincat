@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lincat - Intelligent Link Categorization</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["-apple-system", "BlinkMacSystemFont", "SF Pro Display", "Inter", "system-ui", "sans-serif"],
+          },
+          animation: {
+            'slide-up': 'slide-up 0.3s ease-out',
+            'fade-in': 'fade-in 0.2s ease-out',
+          },
+          keyframes: {
+            'slide-up': {
+              '0%': { transform: 'translateY(10px)', opacity: '0' },
+              '100%': { transform: 'translateY(0)', opacity: '1' },
+            },
+            'fade-in': {
+              '0%': { opacity: '0' },
+              '100%': { opacity: '1' },
+            }
+          }
+        },
+      },
+    };
+  </script>
+  <style>
+    .glass-effect {
+      backdrop-filter: blur(20px);
+      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .search-shadow {
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+    }
+    .card-hover {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.12);
+    }
+    .card-hover:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 32px 64px rgba(0, 0, 0, 0.25), 0 16px 32px rgba(0, 0, 0, 0.18);
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-white to-slate-100 min-h-screen">
+  
+  <!-- Search Interface -->
+  <div id="search-view" class="min-h-screen flex flex-col items-center justify-center p-6">
+    <!-- Background Elements -->
+    <div class="fixed inset-0 -z-10">
+      <div class="absolute top-1/4 left-1/4 w-72 h-72 bg-gradient-to-br from-blue-100 to-indigo-200 rounded-full blur-3xl opacity-30"></div>
+      <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-tl from-purple-100 to-pink-200 rounded-full blur-3xl opacity-30"></div>
+    </div>
+
+    <!-- Header -->
+    <div class="text-center mb-16 animate-fade-in">
+      <h1 class="text-6xl md:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 mb-6">
+        Lincat
+      </h1>
+      <p class="text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
+        Intelligently categorize your links and content. 
+        <span class="text-indigo-600 font-medium">Just paste and let AI organize.</span>
+      </p>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="w-full max-w-2xl mb-8">
+      <div class="relative group">
+        <div class="absolute inset-0 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl blur opacity-20 group-hover:opacity-30 transition-opacity"></div>
+        <div class="relative glass-effect rounded-xl p-4 search-shadow">
+          <div class="flex items-center space-x-3">
+            <div class="flex-1">
+              <input 
+                id="search-input" 
+                type="text"
+                placeholder="Paste a link or add content..."
+                class="w-full bg-transparent text-base placeholder-slate-400 focus:outline-none border-none py-2"
+              />
+            </div>
+            <button 
+              id="categorize-btn" 
+              class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span class="categorize-text">Add</span>
+              <div class="loading-spinner hidden">
+                <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Quick Actions -->
+      <div class="flex justify-center mt-6 space-x-4">
+        <button 
+          id="view-categories-btn"
+          class="text-slate-600 hover:text-indigo-600 transition-colors duration-200 font-medium"
+        >
+          View All Categories →
+        </button>
+      </div>
+    </div>
+
+    <!-- Success Message -->
+    <div id="success-message" class="hidden animate-slide-up max-w-md">
+      <div class="glass-effect rounded-xl p-6 text-center">
+        <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-slate-900 mb-2">Successfully Categorized!</h3>
+        <p class="text-slate-600 text-sm mb-4">Your content has been organized and saved.</p>
+        <button id="view-result-btn" class="text-indigo-600 font-medium hover:text-indigo-700 transition-colors">
+          View in Categories →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Categories View -->
+  <div id="categories-view" class="hidden min-h-screen p-6">
+    <!-- Header -->
+    <div class="max-w-7xl mx-auto">
+      <div class="flex items-center justify-between mb-8">
+        <div>
+          <h1 class="text-4xl font-bold text-slate-900 mb-2">Your Categories</h1>
+          <p class="text-slate-600">Organized content at a glance</p>
+        </div>
+        <div class="flex items-center space-x-4">
+          <button 
+            id="search-toggle"
+            class="glass-effect px-4 py-2 rounded-xl text-slate-600 hover:text-slate-900 transition-colors"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+          </button>
+          <button 
+            id="back-to-home"
+            class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2 rounded-xl font-medium hover:shadow-lg transition-all duration-200"
+          >
+            Add New
+          </button>
+        </div>
+      </div>
+
+      <!-- Search Bar (collapsed) -->
+      <div id="search-bar-collapsed" class="hidden mb-8">
+        <div class="glass-effect rounded-xl p-4 max-w-md">
+          <input 
+            id="search-categories-input"
+            type="text" 
+            placeholder="Search all content..."
+            class="w-full bg-transparent focus:outline-none text-slate-700"
+          >
+        </div>
+      </div>
+
+      <!-- Categories Grid -->
+      <div id="categories-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 max-w-none">
+        <!-- Categories will be inserted here -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="hidden text-center py-20">
+        <div class="max-w-md mx-auto">
+          <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold text-slate-900 mb-2">No categories yet</h3>
+          <p class="text-slate-600 mb-6">Start by adding your first link or content to get organized.</p>
+          <button id="add-first-link" class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl font-medium hover:shadow-lg transition-all duration-200">
+            Add Your First Link
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="hidden fixed inset-0 z-50 items-center justify-center p-6">
+    <div class="fixed inset-0 bg-black/20 backdrop-blur-sm" id="modal-backdrop"></div>
+    <div class="relative glass-effect rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto animate-slide-up">
+      <div class="p-8">
+        <div class="flex items-start justify-between mb-6">
+          <div class="flex-1">
+            <h2 id="modal-title" class="text-2xl font-bold text-slate-900 mb-2"></h2>
+            <div class="flex items-center space-x-2">
+              <span id="modal-category" class="text-sm text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full font-medium"></span>
+              <span id="modal-date" class="text-sm text-slate-500"></span>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button id="delete-link-btn" class="text-red-400 hover:text-red-600 transition-colors p-1">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+              </svg>
+            </button>
+            <button id="modal-close" class="text-slate-400 hover:text-slate-600 transition-colors">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <div class="space-y-6">
+          <div>
+            <h3 class="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-2">AI Description</h3>
+            <p id="modal-ai-description" class="text-slate-700 leading-relaxed"></p>
+          </div>
+          
+          <div id="modal-url-section" class="hidden">
+            <h3 class="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-2">Link</h3>
+            <a id="modal-url" href="#" target="_blank" class="text-indigo-600 hover:text-indigo-700 break-all font-medium">
+            </a>
+          </div>
+          
+          <div>
+            <h3 class="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-2">Original Content</h3>
+            <div id="modal-original-content" class="bg-slate-50 rounded-xl p-4 text-slate-700 font-mono text-sm"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirm-modal" class="hidden fixed inset-0 z-60 items-center justify-center p-6">
+    <div class="fixed inset-0 bg-black/30 backdrop-blur-sm" id="confirm-modal-backdrop"></div>
+    <div class="relative glass-effect rounded-2xl max-w-md w-full animate-slide-up">
+      <div class="p-6">
+        <div class="flex items-center mb-4">
+          <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-4">
+            <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold text-slate-900">Confirm Deletion</h3>
+            <p id="confirm-message" class="text-sm text-slate-600 mt-1"></p>
+          </div>
+        </div>
+        
+        <div class="flex space-x-3 justify-end">
+          <button id="confirm-cancel" class="px-4 py-2 text-slate-600 hover:text-slate-800 transition-colors font-medium">
+            Cancel
+          </button>
+          <button id="confirm-delete" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium">
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "lincat",
+  "version": "1.0.0",
+  "description": "Link categorization webapp with Apple-style design",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^4.18.2",
+    "groq-sdk": "^0.3.3",
+    "node-fetch": "^3.3.2",
+    "sqlite3": "^5.1.6",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
