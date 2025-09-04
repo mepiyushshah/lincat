@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "node -e \"console.log('Build completed - using CDN version of Tailwind for production')\"",
+    "vercel-build": "node -e \"console.log('Vercel build completed - using CDN version of Tailwind for production')\""
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
@@ -15,6 +17,7 @@
     "groq-sdk": "^0.3.3",
     "node-fetch": "^3.3.2",
     "sqlite3": "^5.1.6",
+    "tailwindcss": "^4.1.13",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
