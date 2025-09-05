@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lincat - Intelligent Link Categorization</title>
+  <title>Lincat - Intelligent Link Categorization SaaS</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -51,6 +52,97 @@
 </head>
 <body class="bg-gradient-to-br from-slate-50 via-white to-slate-100 min-h-screen">
   
+  <!-- Authentication Interface -->
+  <div id="auth-view" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
+    <!-- Background Elements -->
+    <div class="fixed inset-0 -z-10">
+      <div class="absolute top-1/4 left-1/4 w-72 h-72 bg-gradient-to-br from-blue-100 to-indigo-200 rounded-full blur-3xl opacity-30"></div>
+      <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-tl from-purple-100 to-pink-200 rounded-full blur-3xl opacity-30"></div>
+    </div>
+
+    <!-- Header -->
+    <div class="text-center mb-12 animate-fade-in">
+      <h1 class="text-6xl md:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 mb-4">
+        Lincat
+      </h1>
+      <p class="text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
+        Your intelligent link categorization SaaS platform
+      </p>
+    </div>
+
+    <!-- Sign In Form -->
+    <div id="signin-form" class="w-full max-w-md">
+      <div class="glass-effect rounded-xl p-8 search-shadow">
+        <h2 class="text-2xl font-bold text-slate-900 mb-6 text-center">Welcome Back</h2>
+        <div class="space-y-4">
+          <div>
+            <input 
+              id="signin-email" 
+              type="email"
+              placeholder="Email address"
+              class="w-full bg-white/70 border border-slate-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <input 
+              id="signin-password" 
+              type="password"
+              placeholder="Password"
+              class="w-full bg-white/70 border border-slate-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <button 
+            onclick="signIn(document.getElementById('signin-email').value, document.getElementById('signin-password').value)"
+            class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+          >
+            Sign In
+          </button>
+        </div>
+        <div class="mt-6 text-center">
+          <button onclick="showSignUp()" class="text-indigo-600 hover:text-indigo-700 transition-colors">
+            Don't have an account? Sign up
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sign Up Form -->
+    <div id="signup-form" class="hidden w-full max-w-md">
+      <div class="glass-effect rounded-xl p-8 search-shadow">
+        <h2 class="text-2xl font-bold text-slate-900 mb-6 text-center">Create Account</h2>
+        <div class="space-y-4">
+          <div>
+            <input 
+              id="signup-email" 
+              type="email"
+              placeholder="Email address"
+              class="w-full bg-white/70 border border-slate-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <input 
+              id="signup-password" 
+              type="password"
+              placeholder="Password (min 6 characters)"
+              class="w-full bg-white/70 border border-slate-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <button 
+            onclick="signUp(document.getElementById('signup-email').value, document.getElementById('signup-password').value)"
+            class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+          >
+            Create Account
+          </button>
+        </div>
+        <div class="mt-6 text-center">
+          <button onclick="showSignIn()" class="text-indigo-600 hover:text-indigo-700 transition-colors">
+            Already have an account? Sign in
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Search Interface -->
   <div id="search-view" class="min-h-screen flex flex-col items-center justify-center p-6">
     <!-- Background Elements -->
@@ -146,6 +238,15 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
             </svg>
           </button>
+          <div class="flex items-center space-x-2 glass-effect px-4 py-2 rounded-xl">
+            <span id="user-email" class="text-sm text-slate-600"></span>
+            <button 
+              onclick="signOut()"
+              class="text-red-600 hover:text-red-700 transition-colors text-sm"
+            >
+              Sign Out
+            </button>
+          </div>
           <button 
             id="back-to-home"
             class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2 rounded-xl font-medium hover:shadow-lg transition-all duration-200"
@@ -239,7 +340,7 @@
   </div>
 
   <!-- Confirmation Modal -->
-  <div id="confirm-modal" class="hidden fixed inset-0 z-60 items-center justify-center p-6">
+  <div id="confirm-modal" class="hidden fixed inset-0 z-[9999] items-center justify-center p-6">
     <div class="fixed inset-0 bg-black/30 backdrop-blur-sm" id="confirm-modal-backdrop"></div>
     <div class="relative glass-effect rounded-2xl max-w-md w-full animate-slide-up">
       <div class="p-6">
@@ -267,6 +368,7 @@
     </div>
   </div>
 
+  <script src="auth.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

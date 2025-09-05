@@ -4,6 +4,7 @@ import cors from 'cors';
 import { Groq } from 'groq-sdk';
 import fetch from 'node-fetch';
 import { load } from 'cheerio';
+import { createClient } from '@supabase/supabase-js';
 import sqlite3 from 'sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
@@ -22,16 +23,41 @@ const client = new Groq({
   apiKey: process.env.GROQ_API_KEY
 });
 
-app.use(cors());
+// Initialize Supabase
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
+
+console.log('Supabase initialized:', process.env.SUPABASE_URL ? 'Yes' : 'No');
+
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Note: Database tables will be created directly in Supabase dashboard
+// Categories table: id (text, primary), name (text), user_id (uuid, foreign key), created_at (timestamp)
+// Links table: id (text, primary), original_input (text), title (text), description (text), url (text), 
+//              category_id (text, foreign key), ai_description (text), user_id (uuid, foreign key), created_at (timestamp)
+
+// Initialize SQLite for local development
 const db = new sqlite3.Database('lincat.db');
 
+// Create SQLite tables
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    user_id TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
   
@@ -43,10 +69,43 @@ db.serialize(() => {
     url TEXT,
     category_id TEXT,
     ai_description TEXT,
+    user_id TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(category_id) REFERENCES categories(id)
   )`);
 });
+
+console.log('Database connections established (SQLite + Supabase)');
+
+// Authentication middleware
+async function authenticateUser(req, res, next) {
+  try {
+    // Skip authentication in local development mode (when running on localhost)
+    const isLocal = req.get('host')?.includes('localhost') || req.get('host')?.includes('127.0.0.1');
+    if (isLocal) {
+      req.user = { id: 'dev-user', email: 'dev@example.com' };
+      return next();
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    
+    if (error || !user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error('Auth error:', error);
+    res.status(401).json({ error: 'Authentication failed' });
+  }
+}
 
 async function extractMetadata(url) {
   try {
@@ -146,15 +205,21 @@ Description: ${description}`
       };
     } else if (lowerInput.includes('twitter.com') || lowerInput.includes('x.com')) {
       return {
-        category: "Social Media",
+        category: "Twitter Posts",
         description: `Twitter/X profile or post: ${title || 'Social media content'}`,
-        isNew: !existingCategories.includes("Social Media")
+        isNew: !existingCategories.includes("Twitter Posts")
       };
     } else if (lowerInput.includes('linkedin.com')) {
       return {
-        category: "Professional Network", 
+        category: "LinkedIn Profiles", 
         description: `LinkedIn profile or post: ${title || 'Professional networking content'}`,
-        isNew: !existingCategories.includes("Professional Network")
+        isNew: !existingCategories.includes("LinkedIn Profiles")
+      };
+    } else if (lowerInput.includes('facebook.com') || lowerInput.includes('fb.com')) {
+      return {
+        category: "Facebook Content",
+        description: `Facebook profile or post: ${title || 'Social networking content'}`,
+        isNew: !existingCategories.includes("Facebook Content")
       };
     } else if (content.includes('todo') || content.includes('task') || content.includes('reminder')) {
       return {
@@ -178,9 +243,14 @@ Description: ${description}`
   }
 }
 
-app.post('/api/categorize', async (req, res) => {
+app.post('/api/categorize', authenticateUser, async (req, res) => {
   try {
+    console.log('Received categorize request from user:', req.user.id);
     const { input } = req.body;
+    
+    if (!input || typeof input !== 'string' || input.trim() === '') {
+      return res.status(400).json({ error: 'Input is required and must be a non-empty string' });
+    }
     
     const isUrl = input.match(/https?:\/\/[^\s]+/);
     let title = '';
@@ -226,53 +296,138 @@ app.post('/api/categorize', async (req, res) => {
       description = input;
     }
     
-    const existingCategories = await new Promise((resolve, reject) => {
-      db.all("SELECT name FROM categories", (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows.map(row => row.name));
-      });
-    });
+    // Get existing categories for this user
+    let existingCategories;
+    const isLocal = req.get('host')?.includes('localhost') || req.get('host')?.includes('127.0.0.1');
     
-    const categorization = await categorizeWithLLM(input, title, description, existingCategories);
+    if (isLocal) {
+      // Use SQLite for local development
+      existingCategories = await new Promise((resolve, reject) => {
+        db.all("SELECT name FROM categories WHERE user_id = ?", [req.user.id], (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows);
+        });
+      });
+    } else {
+      // Use Supabase for production
+      const { data } = await supabase
+        .from('categories')
+        .select('name')
+        .eq('user_id', req.user.id);
+      existingCategories = data;
+    }
+    
+    const categoryNames = existingCategories?.map(row => row.name) || [];
+    
+    const categorization = await categorizeWithLLM(input, title, description, categoryNames);
     
     let categoryId;
     if (categorization.isNew) {
       categoryId = uuidv4();
+      
+      if (isLocal) {
+        // Use SQLite for local development
+        await new Promise((resolve, reject) => {
+          db.run("INSERT INTO categories (id, name, user_id) VALUES (?, ?, ?)", 
+                 [categoryId, categorization.category, req.user.id], (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      } else {
+        // Use Supabase for production
+        const { error } = await supabase
+          .from('categories')
+          .insert({
+            id: categoryId,
+            name: categorization.category,
+            user_id: req.user.id
+          });
+        
+        if (error) {
+          console.error('Category insert error:', error);
+          throw error;
+        }
+      }
+    } else {
+      if (isLocal) {
+        // Use SQLite for local development
+        const existingCategory = await new Promise((resolve, reject) => {
+          db.get("SELECT id FROM categories WHERE name = ? AND user_id = ?", 
+                 [categorization.category, req.user.id], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          });
+        });
+        
+        categoryId = existingCategory?.id || uuidv4();
+        if (!existingCategory) {
+          await new Promise((resolve, reject) => {
+            db.run("INSERT INTO categories (id, name, user_id) VALUES (?, ?, ?)", 
+                   [categoryId, categorization.category, req.user.id], (err) => {
+              if (err) reject(err);
+              else resolve();
+            });
+          });
+        }
+      } else {
+        // Use Supabase for production
+        const { data: existingCategory } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('name', categorization.category)
+          .eq('user_id', req.user.id)
+          .single();
+        
+        categoryId = existingCategory?.id || uuidv4();
+        if (!existingCategory) {
+          const { error } = await supabase
+            .from('categories')
+            .insert({
+              id: categoryId,
+              name: categorization.category,
+              user_id: req.user.id
+            });
+          
+          if (error) {
+            console.error('Category insert error:', error);
+            throw error;
+          }
+        }
+      }
+    }
+    
+    const linkId = uuidv4();
+    if (isLocal) {
+      // Use SQLite for local development
       await new Promise((resolve, reject) => {
-        db.run("INSERT INTO categories (id, name) VALUES (?, ?)", 
-               [categoryId, categorization.category], (err) => {
+        db.run(`INSERT INTO links (id, original_input, title, description, url, category_id, ai_description, user_id) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+               [linkId, input, title, description, url, categoryId, categorization.description, req.user.id], (err) => {
           if (err) reject(err);
           else resolve();
         });
       });
     } else {
-      const category = await new Promise((resolve, reject) => {
-        db.get("SELECT id FROM categories WHERE name = ?", [categorization.category], (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
+      // Use Supabase for production
+      const { error: linkError } = await supabase
+        .from('links')
+        .insert({
+          id: linkId,
+          original_input: input,
+          title,
+          description,
+          url,
+          category_id: categoryId,
+          ai_description: categorization.description,
+          user_id: req.user.id
         });
-      });
-      categoryId = category?.id || uuidv4();
-      if (!category) {
-        await new Promise((resolve, reject) => {
-          db.run("INSERT INTO categories (id, name) VALUES (?, ?)", 
-                 [categoryId, categorization.category], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
+      
+      if (linkError) {
+        console.error('Link insert error:', linkError);
+        throw linkError;
       }
     }
-    
-    const linkId = uuidv4();
-    await new Promise((resolve, reject) => {
-      db.run(`INSERT INTO links (id, original_input, title, description, url, category_id, ai_description) 
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-             [linkId, input, title, description, url, categoryId, categorization.description], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
     
     res.json({
       success: true,
@@ -288,34 +443,75 @@ app.post('/api/categorize', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Failed to categorize content' });
+    console.error('Categorization error:', error);
+    res.status(500).json({ 
+      error: 'Failed to categorize content', 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
-app.get('/api/categories', async (req, res) => {
+app.get('/api/categories', authenticateUser, async (req, res) => {
   try {
-    const categories = await new Promise((resolve, reject) => {
-      db.all(`SELECT c.*, COUNT(l.id) as link_count 
-              FROM categories c 
-              LEFT JOIN links l ON c.id = l.category_id 
-              GROUP BY c.id 
-              ORDER BY c.created_at DESC`, (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
+    const isLocal = req.get('host')?.includes('localhost') || req.get('host')?.includes('127.0.0.1');
+    let categoriesWithLinks = [];
     
-    const categoriesWithLinks = await Promise.all(categories.map(async (category) => {
-      const links = await new Promise((resolve, reject) => {
-        db.all("SELECT * FROM links WHERE category_id = ? ORDER BY created_at DESC", 
-               [category.id], (err, rows) => {
+    if (isLocal) {
+      // Use SQLite for local development
+      const categories = await new Promise((resolve, reject) => {
+        db.all("SELECT * FROM categories WHERE user_id = ? ORDER BY created_at DESC", 
+               [req.user.id], (err, rows) => {
           if (err) reject(err);
-          else resolve(rows);
+          else resolve(rows || []);
         });
       });
-      return { ...category, links };
-    }));
+      
+      // Get links for each category
+      categoriesWithLinks = await Promise.all(categories.map(async (category) => {
+        const links = await new Promise((resolve, reject) => {
+          db.all("SELECT * FROM links WHERE category_id = ? AND user_id = ? ORDER BY created_at DESC", 
+                 [category.id, req.user.id], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          });
+        });
+        
+        return { 
+          ...category, 
+          link_count: links.length,
+          links: links 
+        };
+      }));
+    } else {
+      // Use Supabase for production
+      const { data: categories, error } = await supabase
+        .from('categories')
+        .select('*')
+        .eq('user_id', req.user.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Categories fetch error:', error);
+        throw error;
+      }
+      
+      // Get links for each category
+      categoriesWithLinks = await Promise.all((categories || []).map(async (category) => {
+        const { data: links } = await supabase
+          .from('links')
+          .select('*')
+          .eq('category_id', category.id)
+          .eq('user_id', req.user.id)
+          .order('created_at', { ascending: false });
+        
+        return { 
+          ...category, 
+          link_count: links?.length || 0,
+          links: links || [] 
+        };
+      }));
+    }
     
     res.json(categoriesWithLinks);
   } catch (error) {
@@ -324,47 +520,45 @@ app.get('/api/categories', async (req, res) => {
   }
 });
 
-app.get('/api/search', async (req, res) => {
+app.get('/api/search', authenticateUser, async (req, res) => {
   try {
     const { q } = req.query;
-    const links = await new Promise((resolve, reject) => {
-      db.all(`SELECT l.*, c.name as category_name 
-              FROM links l 
-              JOIN categories c ON l.category_id = c.id 
-              WHERE l.title LIKE ? OR l.description LIKE ? OR l.ai_description LIKE ? OR l.original_input LIKE ?
-              ORDER BY l.created_at DESC`,
-             [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
+    const { data: links, error } = await supabase
+      .from('links')
+      .select(`
+        *,
+        categories(name)
+      `)
+      .eq('user_id', req.user.id)
+      .or(`title.ilike.%${q}%,description.ilike.%${q}%,ai_description.ilike.%${q}%,original_input.ilike.%${q}%`)
+      .order('created_at', { ascending: false });
     
-    res.json(links);
+    if (error) throw error;
+    
+    const formattedLinks = links?.map(link => ({
+      ...link,
+      category_name: link.categories?.name
+    })) || [];
+    
+    res.json(formattedLinks);
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Failed to search' });
   }
 });
 
-app.delete('/api/categories/:categoryId', async (req, res) => {
+app.delete('/api/categories/:categoryId', authenticateUser, async (req, res) => {
   try {
     const { categoryId } = req.params;
     
-    // First delete all links in this category
-    await new Promise((resolve, reject) => {
-      db.run("DELETE FROM links WHERE category_id = ?", [categoryId], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    // Delete category (links will be deleted automatically due to CASCADE)
+    const { error } = await supabase
+      .from('categories')
+      .delete()
+      .eq('id', categoryId)
+      .eq('user_id', req.user.id);
     
-    // Then delete the category
-    await new Promise((resolve, reject) => {
-      db.run("DELETE FROM categories WHERE id = ?", [categoryId], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    if (error) throw error;
     
     res.json({ success: true, message: 'Category and all its links deleted successfully' });
   } catch (error) {
@@ -373,16 +567,17 @@ app.delete('/api/categories/:categoryId', async (req, res) => {
   }
 });
 
-app.delete('/api/links/:linkId', async (req, res) => {
+app.delete('/api/links/:linkId', authenticateUser, async (req, res) => {
   try {
     const { linkId } = req.params;
     
-    await new Promise((resolve, reject) => {
-      db.run("DELETE FROM links WHERE id = ?", [linkId], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    const { error } = await supabase
+      .from('links')
+      .delete()
+      .eq('id', linkId)
+      .eq('user_id', req.user.id);
+    
+    if (error) throw error;
     
     res.json({ success: true, message: 'Link deleted successfully' });
   } catch (error) {
@@ -391,10 +586,70 @@ app.delete('/api/links/:linkId', async (req, res) => {
   }
 });
 
+// Authentication endpoints
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      user: data.user,
+      session: data.session
+    });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/signin', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    
+    if (error) throw error;
+    
+    res.json({
+      success: true,
+      user: data.user,
+      session: data.session
+    });
+  } catch (error) {
+    console.error('Signin error:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/signout', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      await supabase.auth.signOut(token);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Signout error:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`Lincat server running at http://localhost:${port}`);
 });

@@ -58,11 +58,16 @@ class LincatApp {
     spinner.classList.remove('hidden');
 
     try {
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
       const response = await fetch('/api/categorize', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ input }),
       });
 
@@ -87,7 +92,15 @@ class LincatApp {
 
   async loadCategories() {
     try {
-      const response = await fetch('/api/categories');
+      const headers = {};
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
+      const response = await fetch('/api/categories', {
+        headers
+      });
+      
       this.categories = await response.json();
       this.renderCategories();
     } catch (error) {
@@ -102,7 +115,14 @@ class LincatApp {
     }
 
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const headers = {};
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
+        headers
+      });
       this.searchResults = await response.json();
       this.renderSearchResults();
     } catch (error) {
@@ -374,8 +394,14 @@ class LincatApp {
   }
 
   async deleteCategory() {
+    const headers = {};
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    
     const response = await fetch(`/api/categories/${this.currentCategoryId}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers
     });
 
     if (response.ok) {
@@ -388,8 +414,14 @@ class LincatApp {
   }
 
   async deleteLink() {
+    const headers = {};
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    
     const response = await fetch(`/api/links/${this.currentLinkId}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers
     });
 
     if (response.ok) {
