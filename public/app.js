@@ -58,16 +58,11 @@ class LincatApp {
     spinner.classList.remove('hidden');
 
     try {
-      const headers = {
-        'Content-Type': 'application/json'
-      };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-      
       const response = await fetch('/api/categorize', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ input }),
       });
 
@@ -92,14 +87,7 @@ class LincatApp {
 
   async loadCategories() {
     try {
-      const headers = {};
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-      
-      const response = await fetch('/api/categories', {
-        headers
-      });
+      const response = await fetch('/api/categories');
       
       this.categories = await response.json();
       this.renderCategories();
@@ -115,14 +103,7 @@ class LincatApp {
     }
 
     try {
-      const headers = {};
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-      
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
-        headers
-      });
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       this.searchResults = await response.json();
       this.renderSearchResults();
     } catch (error) {
@@ -394,14 +375,8 @@ class LincatApp {
   }
 
   async deleteCategory() {
-    const headers = {};
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
-    }
-    
     const response = await fetch(`/api/categories/${this.currentCategoryId}`, {
-      method: 'DELETE',
-      headers
+      method: 'DELETE'
     });
 
     if (response.ok) {
@@ -414,14 +389,8 @@ class LincatApp {
   }
 
   async deleteLink() {
-    const headers = {};
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
-    }
-    
     const response = await fetch(`/api/links/${this.currentLinkId}`, {
-      method: 'DELETE',
-      headers
+      method: 'DELETE'
     });
 
     if (response.ok) {
