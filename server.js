@@ -646,7 +646,19 @@ app.post('/api/auth/signout', async (req, res) => {
   }
 });
 
+// Serve static files
 app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Catch-all handler for client-side routing
+app.get('*', (req, res) => {
+  // Don't handle API routes
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  
+  // For all other routes, serve the main app
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
